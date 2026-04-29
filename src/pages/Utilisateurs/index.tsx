@@ -13,6 +13,7 @@ type UserForm = {
   nom: string; prenom: string; email: string; password: string; role: string; actif: boolean;
 };
 const emptyForm: UserForm = { nom: "", prenom: "", email: "", password: "", role: "Consultant", actif: true };
+// Note: password n'est utilisé que pour l'édition (changement optionnel)
 
 export default function UtilisateursPage() {
   const [data, setData] = useState<Utilisateur[]>([]);
@@ -48,9 +49,6 @@ export default function UtilisateursPage() {
     if (!form.nom || !form.prenom || !form.email) {
       showToast("Nom, prénom et email sont obligatoires", "error"); return;
     }
-    if (!editing && !form.password) {
-      showToast("Le mot de passe est obligatoire pour un nouvel utilisateur", "error"); return;
-    }
     try {
       if (editing) {
         const payload: any = { nom: form.nom, prenom: form.prenom, email: form.email, role: form.role, actif: form.actif };
@@ -58,8 +56,9 @@ export default function UtilisateursPage() {
         await UtilisateurService.update(editing.id, payload);
         showToast("Utilisateur modifié");
       } else {
-        await UtilisateurService.create({ nom: form.nom, prenom: form.prenom, email: form.email, password: form.password, role: form.role });
-        showToast("Utilisateur créé");
+        // Création sans mot de passe — généré côté serveur et envoyé par email
+        await UtilisateurService.create({ nom: form.nom, prenom: form.prenom, email: form.email, role: form.role });
+        showToast("Utilisateur créé — un email avec le mot de passe provisoire a été envoyé");
       }
       setModalOpen(false); load();
     } catch (e: any) { showToast("Erreur: " + e.message, "error"); }
@@ -155,10 +154,27 @@ export default function UtilisateursPage() {
             <Label>Email *</Label>
             <Input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} placeholder="Ex: fatima@fatourati.ma" />
           </div>
-          <div>
-            <Label>{editing ? "Nouveau mot de passe (laisser vide pour ne pas changer)" : "Mot de passe *"}</Label>
-            <Input type="password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} placeholder="Min. 6 caractères" />
-          </div>
+          {editing ? (
+            <div>
+              <Label>Nouveau mot de passe (laisser vide pour ne pas changer)</Label>
+              <Input type="password" value={form.password}
+                onChange={(e) => setForm({ ...form, password: e.target.value })}
+                placeholder="Min. 6 caractères" />
+            </div>
+          ) : (
+            <div className="rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 dark:border-blue-500/20 dark:bg-blue-500/10">
+              <div className="flex items-start gap-2">
+                <svg className="mt-0.5 size-4 shrink-0 text-blue-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                    d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                </svg>
+                <p className="text-sm text-blue-700 dark:text-blue-400">
+                  Un <strong>mot de passe provisoire</strong> sera généré automatiquement et envoyé
+                  par email à l'utilisateur. Il lui sera demandé de le changer lors de sa première connexion.
+                </p>
+              </div>
+            </div>
+          )}
           <div className="grid grid-cols-2 gap-4">
             <div>
               <Label>Rôle *</Label>

@@ -15,6 +15,10 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   if (!AuthService.isAuthenticated()) {
     return <Navigate to="/login" replace />;
   }
+  // Bloquer toute navigation si le changement de mot de passe est requis
+  if (AuthService.mustChangePassword()) {
+    return <Navigate to="/login" replace />;
+  }
   return <>{children}</>;
 }
 

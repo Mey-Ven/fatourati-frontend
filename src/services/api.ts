@@ -28,8 +28,14 @@ async function request<T>(url: string, options?: RequestInit): Promise<T> {
 
 // ─── Auth ───
 export interface LoginRequest { email: string; password: string; }
-export interface LoginResponse { token: string; email: string; nom: string; prenom: string; role: string; }
-export interface UserInfo { email: string; nom: string; prenom: string; role: string; }
+export interface LoginResponse {
+  token: string; email: string; nom: string; prenom: string; role: string;
+  mustChangePassword: boolean;
+}
+export interface UserInfo {
+  email: string; nom: string; prenom: string; role: string;
+  mustChangePassword: boolean;
+}
 
 export const AuthService = {
   login: async (data: LoginRequest): Promise<LoginResponse> => {
@@ -44,8 +50,24 @@ export const AuthService = {
     }
     const resp: LoginResponse = await res.json();
     sessionStorage.setItem("token", resp.token);
-    sessionStorage.setItem("user", JSON.stringify({ email: resp.email, nom: resp.nom, prenom: resp.prenom, role: resp.role }));
+    sessionStorage.setItem("user", JSON.stringify({
+      email: resp.email, nom: resp.nom, prenom: resp.prenom,
+      role: resp.role, mustChangePassword: resp.mustChangePassword,
+    }));
     return resp;
+  },
+  changePassword: async (data: { oldPassword: string; newPassword: string }): Promise<LoginResponse> => {
+    const res = await request<LoginResponse>(`${API_AUTH}/auth/change-password`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+    // Mettre à jour le token et l'utilisateur en session
+    sessionStorage.setItem("token", res.token);
+    sessionStorage.setItem("user", JSON.stringify({
+      email: res.email, nom: res.nom, prenom: res.prenom,
+      role: res.role, mustChangePassword: false,
+    }));
+    return res;
   },
   logout: () => { sessionStorage.clear(); window.location.href = "/login"; },
   getUser: (): UserInfo | null => {
@@ -53,6 +75,10 @@ export const AuthService = {
     return u ? JSON.parse(u) : null;
   },
   isAuthenticated: () => !!sessionStorage.getItem("token"),
+  mustChangePassword: (): boolean => {
+    const user = AuthService.getUser();
+    return user?.mustChangePassword === true;
+  },
 };
 
 // ─── Utilisateurs (port 8083) ───
@@ -64,7 +90,7 @@ export interface Utilisateur {
 export const UtilisateurService = {
   getAll: () => request<Utilisateur[]>(`${API_AUTH}/utilisateurs`),
   getById: (id: number) => request<Utilisateur>(`${API_AUTH}/utilisateurs/${id}`),
-  create: (data: { nom: string; prenom: string; email: string; password: string; role: string }) =>
+  create: (data: { nom: string; prenom: string; email: string; role: string }) =>
     request<Utilisateur>(`${API_AUTH}/utilisateurs`, { method: "POST", body: JSON.stringify(data) }),
   update: (id: number, data: Partial<Utilisateur & { password?: string }>) =>
     request<Utilisateur>(`${API_AUTH}/utilisateurs/${id}`, { method: "PUT", body: JSON.stringify(data) }),
