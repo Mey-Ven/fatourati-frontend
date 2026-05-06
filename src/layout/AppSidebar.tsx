@@ -11,6 +11,7 @@ import {
   HorizontaLDots,
   ListIcon,
   PageIcon,
+  DollarLineIcon,
   PieChartIcon,
   PlugInIcon,
   TableIcon,
@@ -53,6 +54,11 @@ const navItems: NavItem[] = [
     icon: <TableIcon />,
     name: "Canaux de Paiement",
     path: "/canaux",
+  },
+  {
+    icon: <DollarLineIcon />,
+    name: "Paiements",
+    path: "/paiements",
   },
 ];
 

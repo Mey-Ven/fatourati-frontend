@@ -198,6 +198,58 @@ export const CanalPaiementService = {
   delete: (id: number) => request<void>(`${API_BASE}/canaux-paiement/${id}`, { method: "DELETE" }),
 };
 
+// ─── Paiements (paiement-service port 8084) ───
+const API_PAIEMENT = "http://localhost:8084/api";
+
+export interface Paiement {
+  idPaiement: string;
+  codeCreancier: string;
+  idCreance: string | null;
+  referenceFacture: string | null;
+  referenceArticle: string | null;
+  ribClient: string | null;
+  numeroCompte: string | null;
+  numeroTiers: string | null;
+  nomClient: string | null;
+  montant: number;
+  contratBat: string | null;
+  canalPaiement: string;
+  matricule: string | null;
+  statut: string;
+  idClient: number | null;
+  referenceTransaction: string | null;
+  datePaiement: string;
+}
+
+export interface PaiementSearchRequest {
+  codeCreancier?: string;
+  idCreance?: string;
+  referenceFacture?: string;
+  ribClient?: string;
+  nomClient?: string;
+  canalPaiement?: string;
+  statut?: string;
+  montantMin?: number;
+  montantMax?: number;
+  dateDebut?: string;
+  dateFin?: string;
+}
+
+export const PaiementService = {
+  getAll: () => request<Paiement[]>(`${API_PAIEMENT}/paiements`),
+  getById: (id: string) => request<Paiement>(`${API_PAIEMENT}/paiements/${id}`),
+  search: (data: PaiementSearchRequest) =>
+    request<Paiement[]>(`${API_PAIEMENT}/paiements/search`, {
+      method: "POST", body: JSON.stringify(data),
+    }),
+  create: (data: Partial<Paiement>) =>
+    request<Paiement>(`${API_PAIEMENT}/paiements`, { method: "POST", body: JSON.stringify(data) }),
+  update: (id: string, data: Partial<Paiement>) =>
+    request<Paiement>(`${API_PAIEMENT}/paiements/${id}`, { method: "PUT", body: JSON.stringify(data) }),
+  delete: (id: string) =>
+    request<void>(`${API_PAIEMENT}/paiements/${id}`, { method: "DELETE" }),
+};
+
 // ─── Créances (creance-service port 8082) ───
 const API_CREANCE = "http://localhost:8082/api";
 
