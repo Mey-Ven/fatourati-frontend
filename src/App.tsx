@@ -7,6 +7,7 @@ import CreanciersPage from "./pages/Creanciers";
 import CanauxPage from "./pages/CanauxPaiement";
 import CreancesPage from "./pages/Creances";
 import PaiementsPage from "./pages/Paiements";
+import ClientsPage from "./pages/Clients";
 import LoginPage from "./pages/Login";
 import UtilisateursPage from "./pages/Utilisateurs";
 import ParamFacturierPage from "./pages/ParamFacturier";
@@ -44,6 +45,7 @@ export default function App() {
             <Route path="/creances" element={<CreancesPage />} />
             <Route path="/canaux" element={<CanauxPage />} />
             <Route path="/paiements" element={<PaiementsPage />} />
+            <Route path="/clients" element={<ClientsPage />} />
             <Route path="/utilisateurs" element={<AdminRoute><UtilisateursPage /></AdminRoute>} />
           </Route>
           <Route path="*" element={<NotFound />} />

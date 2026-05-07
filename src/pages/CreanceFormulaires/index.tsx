@@ -185,7 +185,7 @@ export default function CreanceFormulairesPage() {
 
   return (
     <>
-      <PageMeta title="Formulaires Créance — Fatourati" description="" />
+      <PageMeta title="Formulaires Créance — BMCE Pay" description="" />
       <PageBreadcrumb pageTitle="Formulaires Créance" />
 
       {/* Toast */}

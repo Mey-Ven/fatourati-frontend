@@ -238,6 +238,8 @@ export interface PaiementSearchRequest {
 export const PaiementService = {
   getAll: () => request<Paiement[]>(`${API_PAIEMENT}/paiements`),
   getById: (id: string) => request<Paiement>(`${API_PAIEMENT}/paiements/${id}`),
+  getByCreance: (idCreance: string) =>
+    request<Paiement[]>(`${API_PAIEMENT}/paiements/creance/${idCreance}`),
   search: (data: PaiementSearchRequest) =>
     request<Paiement[]>(`${API_PAIEMENT}/paiements/search`, {
       method: "POST", body: JSON.stringify(data),
@@ -275,4 +277,29 @@ export const CreanceService = {
     request<Creance>(`${API_CREANCE}/creances/${idCreance}`, { method: "PUT", body: JSON.stringify(data) }),
   delete: (idCreance: string) =>
     request<void>(`${API_CREANCE}/creances/${idCreance}`, { method: "DELETE" }),
+};
+
+// ─── Clients mobiles (client-service port 8085) ───
+const API_CLIENT = "http://localhost:8085/api";
+
+export interface ClientMobile {
+  id: number;
+  email: string;
+  nom: string;
+  prenom: string;
+  telephone: string | null;
+  cin: string | null;
+  ribPrincipal: string | null;
+  actif: boolean;
+  dateCreation: string;
+  dateModification: string;
+}
+
+export const ClientMobileService = {
+  /** Liste tous les clients (Admin/Consultant back-office) */
+  getAll: () => request<ClientMobile[]>(`${API_CLIENT}/clients`),
+
+  /** Activer ou désactiver un compte client */
+  setActif: (id: number, actif: boolean) =>
+    request<ClientMobile>(`${API_CLIENT}/clients/${id}/actif?actif=${actif}`, { method: "PUT" }),
 };

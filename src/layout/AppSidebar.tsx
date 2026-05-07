@@ -60,6 +60,11 @@ const navItems: NavItem[] = [
     name: "Paiements",
     path: "/paiements",
   },
+  {
+    icon: <UserCircleIcon />,
+    name: "Clients Mobile",
+    path: "/clients",
+  },
 ];
 
 const adminItems: NavItem[] = [

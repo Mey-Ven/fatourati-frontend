@@ -142,7 +142,7 @@ export default function ParamFacturierPage() {
 
   return (
     <>
-      <PageMeta title="Param. Facturier — Fatourati" description="" />
+      <PageMeta title="Param. Facturier — BMCE Pay" description="" />
       <PageBreadcrumb pageTitle="Paramétrage Facturier" />
       {toast && (
         <div

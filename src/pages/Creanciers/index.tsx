@@ -226,7 +226,7 @@ export default function CreanciersPage() {
 
   return (
     <>
-      <PageMeta title="Créanciers — Fatourati" description="" />
+      <PageMeta title="Créanciers — BMCE Pay" description="" />
       <PageBreadcrumb pageTitle="Créanciers" />
       {toast && (
         <div

@@ -237,7 +237,7 @@ export default function LoginPage() {
 
   return (
     <>
-      <PageMeta title="Connexion — Fatourati BackOffice" description="" />
+      <PageMeta title="Connexion — BMCE Pay BackOffice" description="" />
 
       {/* Modale bloquante première connexion */}
       {showChangeModal && <ChangePasswordModal onSuccess={handlePasswordChanged} />}
@@ -246,8 +246,8 @@ export default function LoginPage() {
         <div className="w-full max-w-md">
           {/* Logo */}
           <div className="mb-8 flex justify-center">
-            <img src="/images/logo/auth-logo.svg" alt="Fatourati" className="h-12 dark:hidden" />
-            <img src="/images/logo/logo-dark.svg" alt="Fatourati" className="hidden h-12 dark:block" />
+            <img src="/images/logo/auth-logo.svg" alt="BMCE Pay" className="h-12 dark:hidden" />
+            <img src="/images/logo/logo-dark.svg" alt="BMCE Pay" className="hidden h-12 dark:block" />
           </div>
 
           {/* Card */}
@@ -268,7 +268,7 @@ export default function LoginPage() {
                 <Label>Email</Label>
                 <Input type="email" value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  placeholder="admin@fatourati.ma" />
+                  placeholder="admin@bmcepay.ma" />
               </div>
 
               <div>
@@ -303,7 +303,7 @@ export default function LoginPage() {
           </div>
 
           <p className="mt-4 text-center text-xs text-gray-400 dark:text-gray-500">
-            Fatourati BackOffice © 2025
+            BMCE Pay BackOffice © 2025
           </p>
         </div>
       </div>

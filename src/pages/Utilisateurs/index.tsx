@@ -74,7 +74,7 @@ export default function UtilisateursPage() {
 
   return (
     <>
-      <PageMeta title="Utilisateurs — Fatourati" description="" />
+      <PageMeta title="Utilisateurs — BMCE Pay" description="" />
       <PageBreadcrumb pageTitle="Utilisateurs" />
 
       {toast && (
@@ -152,7 +152,7 @@ export default function UtilisateursPage() {
           </div>
           <div>
             <Label>Email *</Label>
-            <Input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} placeholder="Ex: fatima@fatourati.ma" />
+            <Input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} placeholder="Ex: fatima@bmcepay.ma" />
           </div>
           {editing ? (
             <div>

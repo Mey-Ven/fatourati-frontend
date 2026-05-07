@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import PageBreadcrumb from "../../components/common/PageBreadCrumb";
 import PageMeta from "../../components/common/PageMeta";
 import Badge from "../../components/ui/badge/Badge";
@@ -9,11 +9,16 @@ import Input from "../../components/form/input/InputField";
 import { PencilIcon, TrashBinIcon, PlusIcon } from "../../icons";
 import {
   PaiementService,
+  CreancierService,
+  CreanceService,
+  CanalPaiementService,
   type Paiement,
   type PaiementSearchRequest,
+  type Creancier,
+  type Creance,
+  type CanalPaiement,
 } from "../../services/api";
 
-const CANAUX = ["Daman_Cash", "Bank_Al_Karam", "BMCE_Direct", "Agences_BMCE", "Mobile_App"];
 const STATUTS = ["EFFECTUE", "EN_ATTENTE", "ECHEC", "ANNULE"];
 
 const statutColor = (s: string): "success" | "warning" | "error" | "info" => {
@@ -35,26 +40,74 @@ const emptyForm: PaiementForm = {
   codeCreancier: "", idCreance: "", referenceFacture: "",
   referenceArticle: "", ribClient: "", numeroCompte: "",
   numeroTiers: "", nomClient: "", montant: "", contratBat: "",
-  canalPaiement: "BMCE_Direct", matricule: "", statut: "EFFECTUE",
+  canalPaiement: "", matricule: "", statut: "EFFECTUE",
   referenceTransaction: "", datePaiement: "",
 };
 
 const emptySearch: PaiementSearchRequest = {};
 
+// ── Composant Select réutilisable ─────────────────────────────────────────────
+const Select = ({ value, onChange, disabled, children, placeholder }: {
+  value: string; onChange: (v: string) => void;
+  disabled?: boolean; children: React.ReactNode; placeholder?: string;
+}) => (
+  <select
+    value={value}
+    onChange={e => onChange(e.target.value)}
+    disabled={disabled}
+    className="h-11 w-full rounded-lg border border-gray-300 bg-transparent px-4 text-sm
+               disabled:cursor-not-allowed disabled:bg-gray-50 disabled:text-gray-400
+               dark:border-gray-700 dark:bg-gray-900 dark:text-white/90
+               dark:disabled:bg-gray-800"
+  >
+    {placeholder && <option value="">{placeholder}</option>}
+    {children}
+  </select>
+);
+
 export default function PaiementsPage() {
-  const [data, setData]           = useState<Paiement[]>([]);
-  const [loading, setLoading]     = useState(true);
-  const [modalOpen, setModalOpen] = useState(false);
+  // ── Données principales ───────────────────────────────────────────────────
+  const [data, setData]         = useState<Paiement[]>([]);
+  const [loading, setLoading]   = useState(true);
+
+  // ── Référentiels (chargés une fois au montage) ────────────────────────────
+  const [creanciers, setCreanciers]   = useState<Creancier[]>([]);
+  const [allCreances, setAllCreances] = useState<Creance[]>([]);
+  const [allCanaux, setAllCanaux]     = useState<CanalPaiement[]>([]);
+
+  // ── Listes filtrées selon la sélection en cours ───────────────────────────
+  const [canauxForm,    setCanauxForm]    = useState<CanalPaiement[]>([]);
+  const [creancesForm,  setCreancesForm]  = useState<Creance[]>([]);
+  const [canauxSearch,  setCanauxSearch]  = useState<CanalPaiement[]>([]);
+  const [creancesSearch,setCreancesSearch]= useState<Creance[]>([]);
+
+  // ── Modals ────────────────────────────────────────────────────────────────
+  const [modalOpen, setModalOpen]   = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
-  const [editing, setEditing]     = useState<Paiement | null>(null);
-  const [deleting, setDeleting]   = useState<Paiement | null>(null);
-  const [form, setForm]           = useState<PaiementForm>(emptyForm);
-  const [search, setSearch]       = useState<PaiementSearchRequest>(emptySearch);
-  const [toast, setToast]         = useState("");
-  const [toastType, setToastType] = useState<"success" | "error">("success");
+  const [editing,  setEditing]      = useState<Paiement | null>(null);
+  const [deleting, setDeleting]     = useState<Paiement | null>(null);
+
+  // ── Formulaire & recherche ────────────────────────────────────────────────
+  const [form,   setForm]   = useState<PaiementForm>(emptyForm);
+  const [search, setSearch] = useState<PaiementSearchRequest>(emptySearch);
   const [isSearchActive, setIsSearchActive] = useState(false);
 
+  // ── Toast ─────────────────────────────────────────────────────────────────
+  const [toast, setToast]         = useState("");
+  const [toastType, setToastType] = useState<"success" | "error">("success");
+
+  // ── Maps lookup (code → nom) pour enrichir le tableau ────────────────────
+  const creancierMap = useMemo(() =>
+    Object.fromEntries(creanciers.map(c => [c.codeCreancier, c.nomCreancier])),
+    [creanciers]
+  );
+  const creanceMap = useMemo(() =>
+    Object.fromEntries(allCreances.map(c => [c.idCreance, c.nomCreance])),
+    [allCreances]
+  );
+
+  // ── Chargement initial ────────────────────────────────────────────────────
   const load = useCallback(() => {
     setLoading(true);
     PaiementService.getAll()
@@ -63,14 +116,52 @@ export default function PaiementsPage() {
       .finally(() => setLoading(false));
   }, []);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    load();
+    CreancierService.getAll().then(setCreanciers).catch(() => {});
+    CreanceService.getAll().then(setAllCreances).catch(() => {});
+    CanalPaiementService.getAll().then(setAllCanaux).catch(() => {});
+  }, [load]);
 
   const showToast = (msg: string, type: "success" | "error" = "success") => {
     setToast(msg); setToastType(type); setTimeout(() => setToast(""), 3500);
   };
 
-  const openCreate = () => { setEditing(null); setForm(emptyForm); setModalOpen(true); };
-  const openEdit   = (p: Paiement) => {
+  // ── Quand le créancier change dans le formulaire ──────────────────────────
+  const onCreancierChangeForm = (code: string) => {
+    setForm(f => ({ ...f, codeCreancier: code, canalPaiement: "", idCreance: "" }));
+    if (code) {
+      setCanauxForm(allCanaux.filter(c => c.codeCreancier === code && c.actif));
+      setCreancesForm(allCreances.filter(c => c.codeCreancier === code));
+    } else {
+      setCanauxForm([]);
+      setCreancesForm([]);
+    }
+  };
+
+  // ── Quand le créancier change dans la recherche ───────────────────────────
+  const onCreancierChangeSearch = (code: string) => {
+    setSearch(s => ({ ...s, codeCreancier: code, canalPaiement: undefined, idCreance: undefined }));
+    if (code) {
+      setCanauxSearch(allCanaux.filter(c => c.codeCreancier === code && c.actif));
+      setCreancesSearch(allCreances.filter(c => c.codeCreancier === code));
+    } else {
+      setCanauxSearch([]);
+      setCreancesSearch([]);
+    }
+  };
+
+  // ── Ouvrir modal création ─────────────────────────────────────────────────
+  const openCreate = () => {
+    setEditing(null);
+    setForm(emptyForm);
+    setCanauxForm([]);
+    setCreancesForm([]);
+    setModalOpen(true);
+  };
+
+  // ── Ouvrir modal édition ──────────────────────────────────────────────────
+  const openEdit = (p: Paiement) => {
     setEditing(p);
     setForm({
       codeCreancier: p.codeCreancier ?? "", idCreance: p.idCreance ?? "",
@@ -78,17 +169,23 @@ export default function PaiementsPage() {
       ribClient: p.ribClient ?? "", numeroCompte: p.numeroCompte ?? "",
       numeroTiers: p.numeroTiers ?? "", nomClient: p.nomClient ?? "",
       montant: p.montant?.toString() ?? "", contratBat: p.contratBat ?? "",
-      canalPaiement: p.canalPaiement ?? "BMCE_Direct", matricule: p.matricule ?? "",
+      canalPaiement: p.canalPaiement ?? "", matricule: p.matricule ?? "",
       statut: p.statut ?? "EFFECTUE", referenceTransaction: p.referenceTransaction ?? "",
       datePaiement: p.datePaiement ? p.datePaiement.slice(0, 16) : "",
     });
+    if (p.codeCreancier) {
+      setCanauxForm(allCanaux.filter(c => c.codeCreancier === p.codeCreancier && c.actif));
+      setCreancesForm(allCreances.filter(c => c.codeCreancier === p.codeCreancier));
+    }
     setModalOpen(true);
   };
+
   const openDelete = (p: Paiement) => { setDeleting(p); setDeleteOpen(true); };
 
+  // ── Sauvegarder ──────────────────────────────────────────────────────────
   const handleSave = async () => {
     if (!form.codeCreancier || !form.montant || !form.canalPaiement) {
-      showToast("Code créancier, montant et canal sont obligatoires", "error"); return;
+      showToast("Créancier, montant et canal sont obligatoires", "error"); return;
     }
     try {
       const payload: Partial<Paiement> = {
@@ -119,6 +216,7 @@ export default function PaiementsPage() {
     } catch (e: any) { showToast("Erreur : " + e.message, "error"); }
   };
 
+  // ── Supprimer ────────────────────────────────────────────────────────────
   const handleDelete = async () => {
     if (!deleting) return;
     try {
@@ -127,22 +225,22 @@ export default function PaiementsPage() {
     } catch (e: any) { showToast("Erreur : " + e.message, "error"); }
   };
 
+  // ── Recherche ────────────────────────────────────────────────────────────
   const handleSearch = async () => {
     setLoading(true);
     try {
-      // Nettoyer les champs vides
       const cleaned: PaiementSearchRequest = {};
-      if (search.codeCreancier)  cleaned.codeCreancier  = search.codeCreancier;
-      if (search.idCreance)      cleaned.idCreance      = search.idCreance;
+      if (search.codeCreancier)    cleaned.codeCreancier   = search.codeCreancier;
+      if (search.idCreance)        cleaned.idCreance        = search.idCreance;
       if (search.referenceFacture) cleaned.referenceFacture = search.referenceFacture;
-      if (search.ribClient)      cleaned.ribClient      = search.ribClient;
-      if (search.nomClient)      cleaned.nomClient      = search.nomClient;
-      if (search.canalPaiement)  cleaned.canalPaiement  = search.canalPaiement;
-      if (search.statut)         cleaned.statut         = search.statut;
-      if (search.montantMin)     cleaned.montantMin     = Number(search.montantMin);
-      if (search.montantMax)     cleaned.montantMax     = Number(search.montantMax);
-      if (search.dateDebut)      cleaned.dateDebut      = search.dateDebut + ":00";
-      if (search.dateFin)        cleaned.dateFin        = search.dateFin + ":59";
+      if (search.ribClient)        cleaned.ribClient        = search.ribClient;
+      if (search.nomClient)        cleaned.nomClient        = search.nomClient;
+      if (search.canalPaiement)    cleaned.canalPaiement    = search.canalPaiement;
+      if (search.statut)           cleaned.statut           = search.statut;
+      if (search.montantMin)       cleaned.montantMin       = Number(search.montantMin);
+      if (search.montantMax)       cleaned.montantMax       = Number(search.montantMax);
+      if (search.dateDebut)        cleaned.dateDebut        = search.dateDebut + ":00";
+      if (search.dateFin)          cleaned.dateFin          = search.dateFin + ":59";
 
       const results = await PaiementService.search(cleaned);
       setData(results);
@@ -152,7 +250,11 @@ export default function PaiementsPage() {
   };
 
   const handleReset = () => {
-    setSearch(emptySearch); setIsSearchActive(false); load();
+    setSearch(emptySearch);
+    setCanauxSearch([]);
+    setCreancesSearch([]);
+    setIsSearchActive(false);
+    load();
   };
 
   const sf = (field: keyof PaiementSearchRequest, value: any) =>
@@ -161,7 +263,7 @@ export default function PaiementsPage() {
   return (
     <>
       <PageMeta title="Paiements — BMCE Pay" description="" />
-      <PageBreadcrumb pageTitle="Suivi des Paiements" />
+      <PageBreadcrumb pageTitle="Historique des Paiements" />
 
       {toast && (
         <div className={`mb-4 rounded-lg p-3 text-sm ${toastType === "success"
@@ -171,7 +273,7 @@ export default function PaiementsPage() {
         </div>
       )}
 
-      {/* ── Panneau de recherche ── */}
+      {/* ── Panneau de recherche ───────────────────────────────────────────── */}
       <div className="mb-4 rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-white/[0.03]">
         <button
           onClick={() => setSearchOpen(o => !o)}
@@ -195,50 +297,81 @@ export default function PaiementsPage() {
 
         {searchOpen && (
           <div className="border-t border-gray-100 px-6 py-5 dark:border-gray-800">
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+
+              {/* Créancier */}
               <div>
-                <Label>Code Créancier</Label>
-                <Input placeholder="Ex: BMCE" value={search.codeCreancier ?? ""}
-                  onChange={e => sf("codeCreancier", e.target.value)} />
+                <Label>Créancier</Label>
+                <Select value={search.codeCreancier ?? ""} placeholder="— Tous les créanciers —"
+                  onChange={onCreancierChangeSearch}>
+                  {creanciers.map(c => (
+                    <option key={c.codeCreancier} value={c.codeCreancier}>
+                      {c.codeCreancier} — {c.nomCreancier}
+                    </option>
+                  ))}
+                </Select>
               </div>
+
+              {/* Créance — filtrée par créancier sélectionné */}
               <div>
-                <Label>ID Créance</Label>
-                <Input placeholder="Ex: CR001" value={search.idCreance ?? ""}
-                  onChange={e => sf("idCreance", e.target.value)} />
+                <Label>Créance</Label>
+                <Select
+                  value={search.idCreance ?? ""}
+                  placeholder={search.codeCreancier ? "— Toutes les créances —" : "— Choisir d'abord un créancier —"}
+                  onChange={v => sf("idCreance", v || undefined)}
+                  disabled={!search.codeCreancier}
+                >
+                  {(search.codeCreancier ? creancesSearch : allCreances).map(c => (
+                    <option key={c.idCreance} value={c.idCreance}>
+                      {c.idCreance} — {c.nomCreance}
+                    </option>
+                  ))}
+                </Select>
               </div>
+
+              {/* Canal de paiement — filtré par créancier */}
               <div>
-                <Label>Référence Facture</Label>
-                <Input placeholder="Ex: FAC-2025-001" value={search.referenceFacture ?? ""}
-                  onChange={e => sf("referenceFacture", e.target.value)} />
+                <Label>Canal de Paiement</Label>
+                <Select
+                  value={search.canalPaiement ?? ""}
+                  placeholder={search.codeCreancier ? "— Tous les canaux —" : "— Choisir d'abord un créancier —"}
+                  onChange={v => sf("canalPaiement", v || undefined)}
+                  disabled={!search.codeCreancier}
+                >
+                  {(search.codeCreancier ? canauxSearch : allCanaux)
+                    .filter(c => c.actif)
+                    .map(c => (
+                      <option key={c.id} value={c.nomCanal}>
+                        {c.nomCanal.replace(/_/g, " ")}
+                      </option>
+                    ))}
+                </Select>
               </div>
+
+              {/* Statut */}
               <div>
-                <Label>RIB Client</Label>
-                <Input placeholder="24 chiffres" value={search.ribClient ?? ""}
-                  onChange={e => sf("ribClient", e.target.value)} />
+                <Label>Statut</Label>
+                <Select value={search.statut ?? ""} placeholder="— Tous les statuts —"
+                  onChange={v => sf("statut", v || undefined)}>
+                  {STATUTS.map(s => <option key={s} value={s}>{s}</option>)}
+                </Select>
               </div>
+
+              {/* Nom Client */}
               <div>
                 <Label>Nom Client</Label>
                 <Input placeholder="Recherche partielle..." value={search.nomClient ?? ""}
-                  onChange={e => sf("nomClient", e.target.value)} />
+                  onChange={e => sf("nomClient", e.target.value || undefined)} />
               </div>
+
+              {/* Référence Facture */}
               <div>
-                <Label>Canal de Paiement</Label>
-                <select value={search.canalPaiement ?? ""}
-                  onChange={e => sf("canalPaiement", e.target.value)}
-                  className="h-11 w-full rounded-lg border border-gray-300 bg-transparent px-4 text-sm dark:border-gray-700 dark:bg-gray-900 dark:text-white/90">
-                  <option value="">Tous</option>
-                  {CANAUX.map(c => <option key={c} value={c}>{c.replace(/_/g, " ")}</option>)}
-                </select>
+                <Label>Référence Facture</Label>
+                <Input placeholder="Ex: FAC-2025-001" value={search.referenceFacture ?? ""}
+                  onChange={e => sf("referenceFacture", e.target.value || undefined)} />
               </div>
-              <div>
-                <Label>Statut</Label>
-                <select value={search.statut ?? ""}
-                  onChange={e => sf("statut", e.target.value)}
-                  className="h-11 w-full rounded-lg border border-gray-300 bg-transparent px-4 text-sm dark:border-gray-700 dark:bg-gray-900 dark:text-white/90">
-                  <option value="">Tous</option>
-                  {STATUTS.map(s => <option key={s} value={s}>{s}</option>)}
-                </select>
-              </div>
+
+              {/* Montants */}
               <div className="grid grid-cols-2 gap-2">
                 <div>
                   <Label>Montant Min (MAD)</Label>
@@ -251,6 +384,8 @@ export default function PaiementsPage() {
                     onChange={e => sf("montantMax", e.target.value ? Number(e.target.value) : undefined)} />
                 </div>
               </div>
+
+              {/* Dates */}
               <div>
                 <Label>Date début</Label>
                 <Input type="datetime-local" value={(search.dateDebut ?? "").replace(":00", "")}
@@ -261,6 +396,7 @@ export default function PaiementsPage() {
                 <Input type="datetime-local" value={(search.dateFin ?? "").replace(":59", "")}
                   onChange={e => sf("dateFin", e.target.value)} />
               </div>
+
             </div>
             <div className="mt-4 flex justify-end gap-3">
               <button onClick={handleReset}
@@ -276,7 +412,7 @@ export default function PaiementsPage() {
         )}
       </div>
 
-      {/* ── Tableau ── */}
+      {/* ── Tableau des paiements ──────────────────────────────────────────── */}
       <div className="rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-white/[0.03]">
         <div className="flex items-center justify-between px-6 py-4">
           <h3 className="text-base font-medium text-gray-800 dark:text-white/90">
@@ -298,7 +434,7 @@ export default function PaiementsPage() {
             <Table>
               <TableHeader className="border-b border-gray-100 dark:border-white/[0.05]">
                 <TableRow>
-                  {["ID Paiement", "Code Créancier", "Nom Client", "Montant (MAD)", "Canal", "Statut", "Date", "Actions"].map(h => (
+                  {["ID Paiement", "Créancier", "Créance", "Canal de Paiement", "Nom Client", "Montant (MAD)", "Statut", "Date", "Actions"].map(h => (
                     <TableCell key={h} isHeader
                       className="px-5 py-3 font-medium text-gray-500 text-start text-theme-xs dark:text-gray-400">
                       {h}
@@ -309,33 +445,76 @@ export default function PaiementsPage() {
               <TableBody className="divide-y divide-gray-100 dark:divide-white/[0.05]">
                 {data.map(p => (
                   <TableRow key={p.idPaiement}>
-                    <TableCell className="px-5 py-4 font-mono text-xs text-gray-500">{p.idPaiement}</TableCell>
-                    <TableCell className="px-5 py-4 text-sm font-medium text-gray-800 dark:text-white/90">
-                      {p.codeCreancier}
+
+                    {/* ID Paiement */}
+                    <TableCell className="px-5 py-4 font-mono text-xs text-gray-500 whitespace-nowrap">
+                      {p.idPaiement}
                     </TableCell>
-                    <TableCell className="px-5 py-4 text-sm text-gray-600 dark:text-gray-300">
-                      {p.nomClient ?? <span className="text-gray-400 italic">—</span>}
+
+                    {/* Créancier : code + nom complet */}
+                    <TableCell className="px-5 py-4 whitespace-nowrap">
+                      <div>
+                        <span className="block text-sm font-semibold text-gray-800 dark:text-white/90">
+                          {p.codeCreancier}
+                        </span>
+                        <span className="text-xs text-gray-400">
+                          {creancierMap[p.codeCreancier] ?? ""}
+                        </span>
+                      </div>
                     </TableCell>
-                    <TableCell className="px-5 py-4 text-sm font-semibold text-gray-800 dark:text-white/90">
-                      {Number(p.montant).toLocaleString("fr-MA", { minimumFractionDigits: 2 })}
+
+                    {/* Créance : id + nom */}
+                    <TableCell className="px-5 py-4 whitespace-nowrap">
+                      {p.idCreance ? (
+                        <div>
+                          <span className="block font-mono text-xs font-medium text-gray-700 dark:text-gray-300">
+                            {p.idCreance}
+                          </span>
+                          <span className="text-xs text-gray-400">
+                            {creanceMap[p.idCreance] ?? ""}
+                          </span>
+                        </div>
+                      ) : (
+                        <span className="text-xs text-gray-400 italic">—</span>
+                      )}
                     </TableCell>
+
+                    {/* Canal de paiement */}
                     <TableCell className="px-5 py-4">
-                      <span className="rounded-full bg-gray-100 px-2.5 py-1 text-xs font-medium text-gray-700 dark:bg-gray-800 dark:text-gray-300">
+                      <span className="rounded-full bg-blue-50 px-2.5 py-1 text-xs font-medium text-blue-700 dark:bg-blue-500/10 dark:text-blue-400 whitespace-nowrap">
                         {p.canalPaiement.replace(/_/g, " ")}
                       </span>
                     </TableCell>
+
+                    {/* Nom Client */}
+                    <TableCell className="px-5 py-4 text-sm text-gray-600 dark:text-gray-300">
+                      {p.nomClient ?? <span className="text-gray-400 italic">—</span>}
+                    </TableCell>
+
+                    {/* Montant */}
+                    <TableCell className="px-5 py-4 text-sm font-semibold text-gray-800 dark:text-white/90 whitespace-nowrap">
+                      {Number(p.montant).toLocaleString("fr-MA", { minimumFractionDigits: 2 })}
+                    </TableCell>
+
+                    {/* Statut */}
                     <TableCell className="px-5 py-4">
                       <Badge size="sm" color={statutColor(p.statut)}>{p.statut}</Badge>
                     </TableCell>
-                    <TableCell className="px-5 py-4 text-xs text-gray-500">
+
+                    {/* Date */}
+                    <TableCell className="px-5 py-4 text-xs text-gray-500 whitespace-nowrap">
                       {new Date(p.datePaiement).toLocaleString("fr-FR")}
                     </TableCell>
+
+                    {/* Actions */}
                     <TableCell className="px-5 py-4">
                       <div className="flex items-center gap-2">
-                        <button onClick={() => openEdit(p)} className="text-gray-500 hover:text-brand-500">
+                        <button onClick={() => openEdit(p)} title="Modifier"
+                          className="text-gray-400 hover:text-brand-500 transition-colors">
                           <PencilIcon className="size-5" />
                         </button>
-                        <button onClick={() => openDelete(p)} className="text-gray-500 hover:text-error-500">
+                        <button onClick={() => openDelete(p)} title="Supprimer"
+                          className="text-gray-400 hover:text-error-500 transition-colors">
                           <TrashBinIcon className="size-5" />
                         </button>
                       </div>
@@ -348,24 +527,68 @@ export default function PaiementsPage() {
         </div>
       </div>
 
-      {/* ── Modal Créer / Modifier ── */}
+      {/* ── Modal Créer / Modifier ─────────────────────────────────────────── */}
       <Modal isOpen={modalOpen} onClose={() => setModalOpen(false)} className="max-w-2xl p-6 lg:p-8">
         <h4 className="mb-6 text-lg font-semibold text-gray-800 dark:text-white">
           {editing ? "Modifier le Paiement" : "Nouveau Paiement"}
         </h4>
         <div className="space-y-4">
+
+          {/* Créancier */}
+          <div>
+            <Label>Créancier *</Label>
+            <Select value={form.codeCreancier} placeholder="— Sélectionner un créancier —"
+              onChange={onCreancierChangeForm}>
+              {creanciers.map(c => (
+                <option key={c.codeCreancier} value={c.codeCreancier}>
+                  {c.codeCreancier} — {c.nomCreancier}
+                </option>
+              ))}
+            </Select>
+          </div>
+
           <div className="grid grid-cols-2 gap-4">
+            {/* Canal — filtré par créancier */}
             <div>
-              <Label>Code Créancier *</Label>
-              <Input value={form.codeCreancier} placeholder="Ex: BMCE"
-                onChange={e => setForm({ ...form, codeCreancier: e.target.value })} />
+              <Label>Canal de Paiement *</Label>
+              <Select
+                value={form.canalPaiement}
+                placeholder={form.codeCreancier ? "— Sélectionner un canal —" : "— Choisir d'abord un créancier —"}
+                onChange={v => setForm(f => ({ ...f, canalPaiement: v }))}
+                disabled={!form.codeCreancier}
+              >
+                {canauxForm.map(c => (
+                  <option key={c.id} value={c.nomCanal}>
+                    {c.nomCanal.replace(/_/g, " ")}
+                  </option>
+                ))}
+              </Select>
+              {form.codeCreancier && canauxForm.length === 0 && (
+                <p className="mt-1 text-xs text-warning-500">Aucun canal actif pour ce créancier</p>
+              )}
             </div>
+
+            {/* Créance — filtrée par créancier */}
             <div>
-              <Label>ID Créance</Label>
-              <Input value={form.idCreance} placeholder="Ex: CR001"
-                onChange={e => setForm({ ...form, idCreance: e.target.value })} />
+              <Label>Créance *</Label>
+              <Select
+                value={form.idCreance}
+                placeholder={form.codeCreancier ? "— Sélectionner une créance —" : "— Choisir d'abord un créancier —"}
+                onChange={v => setForm(f => ({ ...f, idCreance: v }))}
+                disabled={!form.codeCreancier}
+              >
+                {creancesForm.map(c => (
+                  <option key={c.idCreance} value={c.idCreance}>
+                    {c.idCreance} — {c.nomCreance}
+                  </option>
+                ))}
+              </Select>
+              {form.codeCreancier && creancesForm.length === 0 && (
+                <p className="mt-1 text-xs text-warning-500">Aucune créance pour ce créancier</p>
+              )}
             </div>
           </div>
+
           <div className="grid grid-cols-2 gap-4">
             <div>
               <Label>Nom Client</Label>
@@ -378,6 +601,7 @@ export default function PaiementsPage() {
                 onChange={e => setForm({ ...form, ribClient: e.target.value })} />
             </div>
           </div>
+
           <div className="grid grid-cols-2 gap-4">
             <div>
               <Label>Référence Facture</Label>
@@ -390,6 +614,7 @@ export default function PaiementsPage() {
                 onChange={e => setForm({ ...form, referenceTransaction: e.target.value })} />
             </div>
           </div>
+
           <div className="grid grid-cols-3 gap-4">
             <div>
               <Label>Montant (MAD) *</Label>
@@ -397,27 +622,10 @@ export default function PaiementsPage() {
                 onChange={e => setForm({ ...form, montant: e.target.value })} />
             </div>
             <div>
-              <Label>Canal de Paiement *</Label>
-              <select value={form.canalPaiement}
-                onChange={e => setForm({ ...form, canalPaiement: e.target.value })}
-                className="h-11 w-full rounded-lg border border-gray-300 bg-transparent px-4 text-sm dark:border-gray-700 dark:bg-gray-900 dark:text-white/90">
-                {CANAUX.map(c => <option key={c} value={c}>{c.replace(/_/g, " ")}</option>)}
-              </select>
-            </div>
-            <div>
               <Label>Statut</Label>
-              <select value={form.statut}
-                onChange={e => setForm({ ...form, statut: e.target.value })}
-                className="h-11 w-full rounded-lg border border-gray-300 bg-transparent px-4 text-sm dark:border-gray-700 dark:bg-gray-900 dark:text-white/90">
+              <Select value={form.statut} onChange={v => setForm(f => ({ ...f, statut: v }))}>
                 {STATUTS.map(s => <option key={s} value={s}>{s}</option>)}
-              </select>
-            </div>
-          </div>
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <Label>Numéro Compte</Label>
-              <Input value={form.numeroCompte}
-                onChange={e => setForm({ ...form, numeroCompte: e.target.value })} />
+              </Select>
             </div>
             <div>
               <Label>Matricule</Label>
@@ -425,11 +633,13 @@ export default function PaiementsPage() {
                 onChange={e => setForm({ ...form, matricule: e.target.value })} />
             </div>
           </div>
+
           <div>
             <Label>Date de Paiement</Label>
             <Input type="datetime-local" value={form.datePaiement}
               onChange={e => setForm({ ...form, datePaiement: e.target.value })} />
           </div>
+
         </div>
         <div className="mt-6 flex justify-end gap-3">
           <button onClick={() => setModalOpen(false)}
@@ -443,12 +653,12 @@ export default function PaiementsPage() {
         </div>
       </Modal>
 
-      {/* ── Modal Suppression ── */}
+      {/* ── Modal Suppression ─────────────────────────────────────────────── */}
       <Modal isOpen={deleteOpen} onClose={() => setDeleteOpen(false)} className="max-w-sm p-6">
         <h4 className="mb-3 text-lg font-semibold text-gray-800 dark:text-white">Supprimer le paiement</h4>
         <p className="mb-6 text-sm text-gray-500 dark:text-gray-400">
           Supprimer le paiement <strong>{deleting?.idPaiement}</strong> de{" "}
-          <strong>{deleting?.montant?.toLocaleString("fr-MA")} MAD</strong> ?
+          <strong>{Number(deleting?.montant).toLocaleString("fr-MA")} MAD</strong> ?
           <br />Cette action est irréversible.
         </p>
         <div className="flex justify-end gap-3">
