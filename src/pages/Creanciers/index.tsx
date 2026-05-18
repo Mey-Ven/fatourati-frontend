@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback, useRef } from "react";
+import { useLocation } from "react-router";
 import PageBreadcrumb from "../../components/common/PageBreadCrumb";
 import PageMeta from "../../components/common/PageMeta";
 import Badge from "../../components/ui/badge/Badge";
@@ -10,6 +11,7 @@ import { PencilIcon, TrashBinIcon, PlusIcon, ArrowUpIcon } from "../../icons";
 import {
   CreancierService,
   ParamFacturierService,
+  AuthService,
   type Creancier,
   type ParamFacturier,
 } from "../../services/api";
@@ -80,9 +82,11 @@ function csvRowToParam(row: Record<string, string>): Partial<ParamFacturier> {
 }
 
 export default function CreanciersPage() {
+  const location = useLocation();
   const [data, setData] = useState<Creancier[]>([]);
   const [params, setParams] = useState<ParamFacturier[]>([]);
   const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState((location.state as any)?.search ?? "");
   const [modalOpen, setModalOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [editing, setEditing] = useState<Creancier | null>(null);
@@ -221,8 +225,19 @@ export default function CreanciersPage() {
     if (success > 0) load();
   };
 
-  // Nombre de parametrages facturier par creancier (0 ou 1 desormais)
+  const isAdmin = AuthService.getUser()?.role === "Admin";
+
   const hasParam = (code: string) => params.some((p) => p.codeCreancier === code);
+
+  const filtered = search.trim()
+    ? data.filter(c => {
+        const q = search.trim().toLowerCase();
+        return (
+          c.codeCreancier.toLowerCase().includes(q) ||
+          (c.nomCreancier || "").toLowerCase().includes(q)
+        );
+      })
+    : data;
 
   return (
     <>
@@ -241,35 +256,50 @@ export default function CreanciersPage() {
       )}
 
       <div className="rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-white/[0.03]">
-        <div className="flex items-center justify-between px-6 py-4">
-          <h3 className="text-base font-medium text-gray-800 dark:text-white/90">
-            {data.length} créancier(s)
-          </h3>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={openImport}
-              className="flex items-center gap-2 rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800"
-            >
-              <ArrowUpIcon className="size-4" /> Importer CSV
-            </button>
-            <button
-              onClick={openCreate}
-              className="flex items-center gap-2 rounded-lg bg-brand-500 px-4 py-2 text-sm font-medium text-white hover:bg-brand-600"
-            >
-              <PlusIcon className="size-4" /> Nouveau Créancier
-            </button>
+        <div className="flex flex-col gap-3 px-6 py-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center gap-3">
+            <h3 className="text-base font-medium text-gray-800 dark:text-white/90">
+              {filtered.length} / {data.length} créancier(s)
+            </h3>
+          </div>
+          <div className="flex flex-1 items-center gap-2 sm:justify-end">
+            <input
+              type="text"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              placeholder="Rechercher par code, nom..."
+              className="h-9 w-full max-w-xs rounded-lg border border-gray-300 bg-white px-3 text-sm text-gray-700 placeholder-gray-400 focus:border-brand-500 focus:outline-none dark:border-gray-700 dark:bg-gray-900 dark:text-white dark:placeholder-gray-500"
+            />
+          {isAdmin && (
+            <div className="flex items-center gap-2">
+              <button
+                onClick={openImport}
+                className="flex items-center gap-2 rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800"
+              >
+                <ArrowUpIcon className="size-4" /> Importer CSV
+              </button>
+              <button
+                onClick={openCreate}
+                className="flex items-center gap-2 rounded-lg bg-brand-500 px-4 py-2 text-sm font-medium text-white hover:bg-brand-600"
+              >
+                <PlusIcon className="size-4" /> Nouveau Créancier
+              </button>
+            </div>
+          )}
           </div>
         </div>
         <div className="border-t border-gray-100 dark:border-gray-800 overflow-x-auto">
           {loading ? (
             <p className="p-6 text-center text-gray-500">Chargement...</p>
-          ) : data.length === 0 ? (
-            <p className="p-6 text-center text-gray-500">Aucun créancier</p>
+          ) : filtered.length === 0 ? (
+            <p className="p-6 text-center text-gray-500">
+              {search ? `Aucun résultat pour "${search}"` : "Aucun créancier"}
+            </p>
           ) : (
             <Table>
               <TableHeader className="border-b border-gray-100 dark:border-white/[0.05]">
                 <TableRow>
-                  {["Code", "Nom", "Logo", "Créances", "Paramétrage", "Actions"].map((h) => (
+                  {["Code", "Nom", "Logo", "Créances", "Paramétrage", ...(isAdmin ? ["Actions"] : [])].map((h) => (
                     <TableCell
                       key={h}
                       isHeader
@@ -281,7 +311,7 @@ export default function CreanciersPage() {
                 </TableRow>
               </TableHeader>
               <TableBody className="divide-y divide-gray-100 dark:divide-white/[0.05]">
-                {data.map((c) => (
+                {filtered.map((c) => (
                   <TableRow key={c.codeCreancier}>
                     <TableCell className="px-5 py-4 font-medium text-brand-500 text-theme-sm">
                       {c.codeCreancier}
@@ -318,22 +348,24 @@ export default function CreanciersPage() {
                         </Badge>
                       )}
                     </TableCell>
-                    <TableCell className="px-5 py-4">
-                      <div className="flex items-center gap-2">
-                        <button
-                          onClick={() => openEdit(c)}
-                          className="text-gray-500 hover:text-brand-500"
-                        >
-                          <PencilIcon className="size-5" />
-                        </button>
-                        <button
-                          onClick={() => openDelete(c)}
-                          className="text-gray-500 hover:text-error-500"
-                        >
-                          <TrashBinIcon className="size-5" />
-                        </button>
-                      </div>
-                    </TableCell>
+                    {isAdmin && (
+                      <TableCell className="px-5 py-4">
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => openEdit(c)}
+                            className="text-gray-500 hover:text-brand-500"
+                          >
+                            <PencilIcon className="size-5" />
+                          </button>
+                          <button
+                            onClick={() => openDelete(c)}
+                            className="text-gray-500 hover:text-error-500"
+                          >
+                            <TrashBinIcon className="size-5" />
+                          </button>
+                        </div>
+                      </TableCell>
+                    )}
                   </TableRow>
                 ))}
               </TableBody>

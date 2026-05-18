@@ -14,10 +14,16 @@ async function request<T>(url: string, options?: RequestInit): Promise<T> {
 
   const res = await fetch(url, { headers, ...options });
   if (res.status === 204) return {} as T;
-  if (res.status === 401 || res.status === 403) {
-    sessionStorage.clear();
-    window.location.href = "/login";
-    throw new Error("Session expirée");
+  if (res.status === 401) {
+    // Token expiré ou invalide — nettoyer la session sans redirect agressif
+    // Le ProtectedRoute gère la redirection au prochain changement de route
+    sessionStorage.removeItem("token");
+    sessionStorage.removeItem("user");
+    throw new Error("Session expirée — veuillez vous reconnecter");
+  }
+  if (res.status === 403) {
+    // Accès refusé (rôle insuffisant) — ne pas toucher à la session
+    throw new Error("Accès non autorisé");
   }
   if (!res.ok) {
     const err = await res.json().catch(() => ({ message: res.statusText }));
@@ -289,17 +295,37 @@ export interface ClientMobile {
   prenom: string;
   telephone: string | null;
   cin: string | null;
-  ribPrincipal: string | null;
   actif: boolean;
   dateCreation: string;
   dateModification: string;
 }
 
+export interface ClientMobileCreateRequest {
+  prenom: string; nom: string; email: string; password: string;
+  telephone?: string; cin?: string;
+}
+export interface ClientMobileUpdateRequest {
+  prenom: string; nom: string; email: string;
+  telephone?: string; cin?: string;
+  password?: string;
+}
+
 export const ClientMobileService = {
-  /** Liste tous les clients (Admin/Consultant back-office) */
   getAll: () => request<ClientMobile[]>(`${API_CLIENT}/clients`),
 
-  /** Activer ou désactiver un compte client */
+  create: (data: ClientMobileCreateRequest) =>
+    request<ClientMobile>(`${API_CLIENT}/clients/register`, {
+      method: "POST", body: JSON.stringify(data),
+    }),
+
+  update: (id: number, data: ClientMobileUpdateRequest) =>
+    request<ClientMobile>(`${API_CLIENT}/clients/${id}`, {
+      method: "PUT", body: JSON.stringify(data),
+    }),
+
+  delete: (id: number) =>
+    request<void>(`${API_CLIENT}/clients/${id}`, { method: "DELETE" }),
+
   setActif: (id: number, actif: boolean) =>
     request<ClientMobile>(`${API_CLIENT}/clients/${id}/actif?actif=${actif}`, { method: "PUT" }),
 };

@@ -75,11 +75,16 @@ function BarRow({ label, value, max, color }: { label: string; value: number; ma
 // ─── Statut badge ───────────────────────────────────────────────
 function statutBadge(s: string) {
   const map: Record<string, "success" | "error" | "warning" | "info"> = {
-    SUCCÈS: "success", SUCCES: "success",
+    EFFECTUE: "success", SUCCÈS: "success", SUCCES: "success",
     ECHEC: "error", ÉCHEC: "error",
     EN_ATTENTE: "warning", PENDING: "warning",
+    ANNULE: "info",
   };
-  return <Badge size="sm" color={map[s] ?? "info"}>{s}</Badge>;
+  const label: Record<string, string> = {
+    EFFECTUE: "Effectué", ECHEC: "Échoué",
+    EN_ATTENTE: "En attente", ANNULE: "Annulé",
+  };
+  return <Badge size="sm" color={map[s] ?? "info"}>{label[s] ?? s}</Badge>;
 }
 
 // ─── Main Dashboard ─────────────────────────────────────────────
@@ -116,10 +121,12 @@ export default function Home() {
     () => paiements.reduce((s, p) => s + (p.montant ?? 0), 0), [paiements]
   );
   const nbSucces = useMemo(
-    () => paiements.filter(p => ["SUCCÈS", "SUCCES"].includes(p.statut)).length, [paiements]
+    () => paiements.filter(p => ["EFFECTUE", "SUCCÈS", "SUCCES"].includes(p.statut)).length,
+    [paiements]
   );
   const nbEchec = useMemo(
-    () => paiements.filter(p => ["ECHEC", "ÉCHEC"].includes(p.statut)).length, [paiements]
+    () => paiements.filter(p => ["ECHEC", "ÉCHEC"].includes(p.statut)).length,
+    [paiements]
   );
 
   // ── Breakdown by canal ───────────────────────────────────────
@@ -271,7 +278,7 @@ export default function Home() {
                 to="/clients"
               />
               <StatCard
-                title="Utilisateurs BO"
+                title="Utilisateurs"
                 value={nbUsers}
                 icon={
                   <svg className="size-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">

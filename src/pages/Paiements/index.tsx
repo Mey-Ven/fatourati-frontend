@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback, useMemo } from "react";
+import { useNavigate, useLocation } from "react-router";
 import PageBreadcrumb from "../../components/common/PageBreadCrumb";
 import PageMeta from "../../components/common/PageMeta";
 import Badge from "../../components/ui/badge/Badge";
@@ -12,6 +13,7 @@ import {
   CreancierService,
   CreanceService,
   CanalPaiementService,
+  AuthService,
   type Paiement,
   type PaiementSearchRequest,
   type Creancier,
@@ -66,6 +68,8 @@ const Select = ({ value, onChange, disabled, children, placeholder }: {
 );
 
 export default function PaiementsPage() {
+  const navigate = useNavigate();
+  const location = useLocation();
   // ── Données principales ───────────────────────────────────────────────────
   const [data, setData]         = useState<Paiement[]>([]);
   const [loading, setLoading]   = useState(true);
@@ -84,14 +88,17 @@ export default function PaiementsPage() {
   // ── Modals ────────────────────────────────────────────────────────────────
   const [modalOpen, setModalOpen]   = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
-  const [searchOpen, setSearchOpen] = useState(false);
   const [editing,  setEditing]      = useState<Paiement | null>(null);
   const [deleting, setDeleting]     = useState<Paiement | null>(null);
 
   // ── Formulaire & recherche ────────────────────────────────────────────────
   const [form,   setForm]   = useState<PaiementForm>(emptyForm);
-  const [search, setSearch] = useState<PaiementSearchRequest>(emptySearch);
-  const [isSearchActive, setIsSearchActive] = useState(false);
+  const navState = (location.state as any) ?? {};
+  const [search, setSearch] = useState<PaiementSearchRequest>(
+    navState.search ? { codeCreancier: navState.search } : emptySearch
+  );
+  const [isSearchActive, setIsSearchActive] = useState(!!navState.search);
+  const [searchOpen, setSearchOpen] = useState(!!navState.search);
 
   // ── Toast ─────────────────────────────────────────────────────────────────
   const [toast, setToast]         = useState("");
@@ -260,6 +267,8 @@ export default function PaiementsPage() {
   const sf = (field: keyof PaiementSearchRequest, value: any) =>
     setSearch(s => ({ ...s, [field]: value }));
 
+  const isAdmin = AuthService.getUser()?.role === "Admin";
+
   return (
     <>
       <PageMeta title="Paiements — BMCE Pay" description="" />
@@ -273,21 +282,17 @@ export default function PaiementsPage() {
         </div>
       )}
 
-      {/* ── Panneau de recherche ───────────────────────────────────────────── */}
+      {/* ── Panneau de recherche (masqué par défaut) ─────────────────────── */}
       <div className="mb-4 rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-white/[0.03]">
-        <button
-          onClick={() => setSearchOpen(o => !o)}
-          className="flex w-full items-center justify-between px-6 py-4 text-left"
-        >
+        <button onClick={() => setSearchOpen(o => !o)}
+          className="flex w-full items-center justify-between px-6 py-3 text-left">
           <span className="flex items-center gap-2 text-sm font-medium text-gray-700 dark:text-gray-200">
             <svg className="size-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
                 d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2a1 1 0 01-.293.707L13 13.414V19a1 1 0 01-.553.894l-4 2A1 1 0 017 21v-7.586L3.293 6.707A1 1 0 013 6V4z" />
             </svg>
-            Recherche multi-critères
-            {isSearchActive && (
-              <span className="rounded-full bg-brand-500 px-2 py-0.5 text-xs text-white">Actif</span>
-            )}
+            Filtres de recherche
+            {isSearchActive && <span className="rounded-full bg-brand-500 px-2 py-0.5 text-xs text-white">Actif</span>}
           </span>
           <svg className={`size-4 text-gray-400 transition-transform ${searchOpen ? "rotate-180" : ""}`}
             fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -296,96 +301,57 @@ export default function PaiementsPage() {
         </button>
 
         {searchOpen && (
-          <div className="border-t border-gray-100 px-6 py-5 dark:border-gray-800">
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-
-              {/* Créancier */}
+          <div className="border-t border-gray-100 px-6 py-4 dark:border-gray-800">
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
               <div>
                 <Label>Créancier</Label>
-                <Select value={search.codeCreancier ?? ""} placeholder="— Tous les créanciers —"
-                  onChange={onCreancierChangeSearch}>
-                  {creanciers.map(c => (
-                    <option key={c.codeCreancier} value={c.codeCreancier}>
-                      {c.codeCreancier} — {c.nomCreancier}
-                    </option>
-                  ))}
+                <Select value={search.codeCreancier ?? ""} placeholder="— Tous —" onChange={onCreancierChangeSearch}>
+                  {creanciers.map(c => <option key={c.codeCreancier} value={c.codeCreancier}>{c.codeCreancier} — {c.nomCreancier}</option>)}
                 </Select>
               </div>
-
-              {/* Créance — filtrée par créancier sélectionné */}
               <div>
                 <Label>Créance</Label>
-                <Select
-                  value={search.idCreance ?? ""}
-                  placeholder={search.codeCreancier ? "— Toutes les créances —" : "— Choisir d'abord un créancier —"}
-                  onChange={v => sf("idCreance", v || undefined)}
-                  disabled={!search.codeCreancier}
-                >
-                  {(search.codeCreancier ? creancesSearch : allCreances).map(c => (
-                    <option key={c.idCreance} value={c.idCreance}>
-                      {c.idCreance} — {c.nomCreance}
-                    </option>
-                  ))}
+                <Select value={search.idCreance ?? ""}
+                  placeholder={search.codeCreancier ? "— Toutes —" : "— Choisir créancier —"}
+                  onChange={v => sf("idCreance", v || undefined)} disabled={!search.codeCreancier}>
+                  {(search.codeCreancier ? creancesSearch : allCreances).map(c => <option key={c.idCreance} value={c.idCreance}>{c.nomCreance}</option>)}
                 </Select>
               </div>
-
-              {/* Canal de paiement — filtré par créancier */}
               <div>
-                <Label>Canal de Paiement</Label>
-                <Select
-                  value={search.canalPaiement ?? ""}
-                  placeholder={search.codeCreancier ? "— Tous les canaux —" : "— Choisir d'abord un créancier —"}
-                  onChange={v => sf("canalPaiement", v || undefined)}
-                  disabled={!search.codeCreancier}
-                >
-                  {(search.codeCreancier ? canauxSearch : allCanaux)
-                    .filter(c => c.actif)
-                    .map(c => (
-                      <option key={c.id} value={c.nomCanal}>
-                        {c.nomCanal.replace(/_/g, " ")}
-                      </option>
-                    ))}
+                <Label>Canal</Label>
+                <Select value={search.canalPaiement ?? ""}
+                  placeholder={search.codeCreancier ? "— Tous —" : "— Choisir créancier —"}
+                  onChange={v => sf("canalPaiement", v || undefined)} disabled={!search.codeCreancier}>
+                  {(search.codeCreancier ? canauxSearch : allCanaux).filter(c => c.actif)
+                    .map(c => <option key={c.id} value={c.nomCanal}>{c.nomCanal.replace(/_/g, " ")}</option>)}
                 </Select>
               </div>
-
-              {/* Statut */}
               <div>
                 <Label>Statut</Label>
-                <Select value={search.statut ?? ""} placeholder="— Tous les statuts —"
-                  onChange={v => sf("statut", v || undefined)}>
+                <Select value={search.statut ?? ""} placeholder="— Tous —" onChange={v => sf("statut", v || undefined)}>
                   {STATUTS.map(s => <option key={s} value={s}>{s}</option>)}
                 </Select>
               </div>
-
-              {/* Nom Client */}
               <div>
-                <Label>Nom Client</Label>
-                <Input placeholder="Recherche partielle..." value={search.nomClient ?? ""}
+                <Label>Nom client</Label>
+                <Input placeholder="Recherche partielle…" value={search.nomClient ?? ""}
                   onChange={e => sf("nomClient", e.target.value || undefined)} />
               </div>
-
-              {/* Référence Facture */}
               <div>
-                <Label>Référence Facture</Label>
-                <Input placeholder="Ex: FAC-2025-001" value={search.referenceFacture ?? ""}
+                <Label>Réf. facture</Label>
+                <Input placeholder="FAC-2025-001" value={search.referenceFacture ?? ""}
                   onChange={e => sf("referenceFacture", e.target.value || undefined)} />
               </div>
-
-              {/* Montants */}
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <Label>Montant Min (MAD)</Label>
-                  <Input type="number" placeholder="0" value={search.montantMin ?? ""}
-                    onChange={e => sf("montantMin", e.target.value ? Number(e.target.value) : undefined)} />
-                </div>
-                <div>
-                  <Label>Montant Max (MAD)</Label>
-                  <Input type="number" placeholder="∞" value={search.montantMax ?? ""}
-                    onChange={e => sf("montantMax", e.target.value ? Number(e.target.value) : undefined)} />
-                </div>
+              <div>
+                <Label>Montant min</Label>
+                <Input type="number" placeholder="0" value={search.montantMin ?? ""}
+                  onChange={e => sf("montantMin", e.target.value ? Number(e.target.value) : undefined)} />
               </div>
-
-              {/* Dates */}
+              <div>
+                <Label>Montant max</Label>
+                <Input type="number" placeholder="∞" value={search.montantMax ?? ""}
+                  onChange={e => sf("montantMax", e.target.value ? Number(e.target.value) : undefined)} />
+              </div>
               <div>
                 <Label>Date début</Label>
                 <Input type="datetime-local" value={(search.dateDebut ?? "").replace(":00", "")}
@@ -396,7 +362,6 @@ export default function PaiementsPage() {
                 <Input type="datetime-local" value={(search.dateFin ?? "").replace(":59", "")}
                   onChange={e => sf("dateFin", e.target.value)} />
               </div>
-
             </div>
             <div className="mt-4 flex justify-end gap-3">
               <button onClick={handleReset}
@@ -419,10 +384,12 @@ export default function PaiementsPage() {
             {data.length} paiement(s)
             {isSearchActive && <span className="ml-2 text-xs text-brand-500">— résultat filtré</span>}
           </h3>
-          <button onClick={openCreate}
-            className="flex items-center gap-2 rounded-lg bg-brand-500 px-4 py-2 text-sm font-medium text-white hover:bg-brand-600">
-            <PlusIcon className="size-4" /> Nouveau Paiement
-          </button>
+          {isAdmin && (
+            <button onClick={openCreate}
+              className="flex items-center gap-2 rounded-lg bg-brand-500 px-4 py-2 text-sm font-medium text-white hover:bg-brand-600">
+              <PlusIcon className="size-4" /> Nouveau Paiement
+            </button>
+          )}
         </div>
 
         <div className="border-t border-gray-100 dark:border-gray-800 overflow-x-auto">
@@ -434,7 +401,7 @@ export default function PaiementsPage() {
             <Table>
               <TableHeader className="border-b border-gray-100 dark:border-white/[0.05]">
                 <TableRow>
-                  {["ID Paiement", "Créancier", "Créance", "Canal de Paiement", "Nom Client", "Montant (MAD)", "Statut", "Date", "Actions"].map(h => (
+                  {["ID · Date", "Créancier", "Créance", "Canal", "Client", "Montant", "Statut", ...(isAdmin ? ["Actions"] : [])].map(h => (
                     <TableCell key={h} isHeader
                       className="px-5 py-3 font-medium text-gray-500 text-start text-theme-xs dark:text-gray-400">
                       {h}
@@ -446,34 +413,41 @@ export default function PaiementsPage() {
                 {data.map(p => (
                   <TableRow key={p.idPaiement}>
 
-                    {/* ID Paiement */}
-                    <TableCell className="px-5 py-4 font-mono text-xs text-gray-500 whitespace-nowrap">
-                      {p.idPaiement}
+                    {/* ID + Date combinés */}
+                    <TableCell className="px-5 py-4 whitespace-nowrap">
+                      <span className="block font-mono text-xs text-gray-500">{p.idPaiement}</span>
+                      <span className="text-xs text-gray-400">{new Date(p.datePaiement).toLocaleString("fr-FR", { day:"2-digit", month:"short", hour:"2-digit", minute:"2-digit" })}</span>
                     </TableCell>
 
-                    {/* Créancier : code + nom complet */}
+                    {/* Créancier — cliquable */}
                     <TableCell className="px-5 py-4 whitespace-nowrap">
-                      <div>
-                        <span className="block text-sm font-semibold text-gray-800 dark:text-white/90">
+                      <button
+                        onClick={() => navigate("/creanciers", { state: { search: p.codeCreancier } })}
+                        className="text-left hover:underline"
+                      >
+                        <span className="block text-sm font-semibold text-brand-600 dark:text-brand-400">
                           {p.codeCreancier}
                         </span>
                         <span className="text-xs text-gray-400">
                           {creancierMap[p.codeCreancier] ?? ""}
                         </span>
-                      </div>
+                      </button>
                     </TableCell>
 
-                    {/* Créance : id + nom */}
+                    {/* Créance — cliquable */}
                     <TableCell className="px-5 py-4 whitespace-nowrap">
                       {p.idCreance ? (
-                        <div>
-                          <span className="block font-mono text-xs font-medium text-gray-700 dark:text-gray-300">
+                        <button
+                          onClick={() => navigate("/creances", { state: { search: p.idCreance } })}
+                          className="text-left hover:underline"
+                        >
+                          <span className="block font-mono text-xs font-medium text-brand-600 dark:text-brand-400">
                             {p.idCreance}
                           </span>
                           <span className="text-xs text-gray-400">
                             {creanceMap[p.idCreance] ?? ""}
                           </span>
-                        </div>
+                        </button>
                       ) : (
                         <span className="text-xs text-gray-400 italic">—</span>
                       )}
@@ -486,39 +460,36 @@ export default function PaiementsPage() {
                       </span>
                     </TableCell>
 
-                    {/* Nom Client */}
-                    <TableCell className="px-5 py-4 text-sm text-gray-600 dark:text-gray-300">
+                    {/* Client */}
+                    <TableCell className="px-4 py-4 text-sm text-gray-600 dark:text-gray-300 max-w-[120px] truncate">
                       {p.nomClient ?? <span className="text-gray-400 italic">—</span>}
                     </TableCell>
 
                     {/* Montant */}
-                    <TableCell className="px-5 py-4 text-sm font-semibold text-gray-800 dark:text-white/90 whitespace-nowrap">
+                    <TableCell className="px-4 py-4 text-sm font-semibold text-gray-800 dark:text-white/90 whitespace-nowrap">
                       {Number(p.montant).toLocaleString("fr-MA", { minimumFractionDigits: 2 })}
                     </TableCell>
 
                     {/* Statut */}
-                    <TableCell className="px-5 py-4">
+                    <TableCell className="px-4 py-4">
                       <Badge size="sm" color={statutColor(p.statut)}>{p.statut}</Badge>
                     </TableCell>
 
-                    {/* Date */}
-                    <TableCell className="px-5 py-4 text-xs text-gray-500 whitespace-nowrap">
-                      {new Date(p.datePaiement).toLocaleString("fr-FR")}
-                    </TableCell>
-
-                    {/* Actions */}
-                    <TableCell className="px-5 py-4">
-                      <div className="flex items-center gap-2">
-                        <button onClick={() => openEdit(p)} title="Modifier"
-                          className="text-gray-400 hover:text-brand-500 transition-colors">
-                          <PencilIcon className="size-5" />
-                        </button>
-                        <button onClick={() => openDelete(p)} title="Supprimer"
-                          className="text-gray-400 hover:text-error-500 transition-colors">
-                          <TrashBinIcon className="size-5" />
-                        </button>
-                      </div>
-                    </TableCell>
+                    {/* Actions — Admin seulement */}
+                    {isAdmin && (
+                      <TableCell className="px-5 py-4">
+                        <div className="flex items-center gap-2">
+                          <button onClick={() => openEdit(p)} title="Modifier"
+                            className="text-gray-400 hover:text-brand-500 transition-colors">
+                            <PencilIcon className="size-5" />
+                          </button>
+                          <button onClick={() => openDelete(p)} title="Supprimer"
+                            className="text-gray-400 hover:text-error-500 transition-colors">
+                            <TrashBinIcon className="size-5" />
+                          </button>
+                        </div>
+                      </TableCell>
+                    )}
                   </TableRow>
                 ))}
               </TableBody>

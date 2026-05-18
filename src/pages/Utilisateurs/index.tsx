@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import PageBreadcrumb from "../../components/common/PageBreadCrumb";
 import PageMeta from "../../components/common/PageMeta";
 import Badge from "../../components/ui/badge/Badge";
@@ -23,8 +23,20 @@ export default function UtilisateursPage() {
   const [editing, setEditing] = useState<Utilisateur | null>(null);
   const [deleting, setDeleting] = useState<Utilisateur | null>(null);
   const [form, setForm] = useState<UserForm>(emptyForm);
+  const [search, setSearch] = useState("");
   const [toast, setToast] = useState("");
   const [toastType, setToastType] = useState<"success" | "error">("success");
+
+  const filtered = useMemo(() => {
+    const q = search.toLowerCase().trim();
+    if (!q) return data;
+    return data.filter(u =>
+      u.nom.toLowerCase().includes(q) ||
+      u.prenom.toLowerCase().includes(q) ||
+      u.email.toLowerCase().includes(q) ||
+      u.role.toLowerCase().includes(q)
+    );
+  }, [data, search]);
 
   const load = useCallback(() => {
     setLoading(true);
@@ -82,14 +94,29 @@ export default function UtilisateursPage() {
       )}
 
       <div className="rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-white/[0.03]">
-        <div className="flex items-center justify-between px-6 py-4">
-          <h3 className="text-base font-medium text-gray-800 dark:text-white/90">{data.length} utilisateur(s)</h3>
-          <button onClick={openCreate} className="flex items-center gap-2 rounded-lg bg-brand-500 px-4 py-2 text-sm font-medium text-white hover:bg-brand-600">
-            <PlusIcon className="size-4" /> Nouvel Utilisateur
-          </button>
+        <div className="flex flex-wrap items-center justify-between gap-3 px-6 py-4">
+          <h3 className="text-base font-medium text-gray-800 dark:text-white/90">
+            {filtered.length} / {data.length} utilisateur(s)
+          </h3>
+          <div className="flex items-center gap-3">
+            <input
+              type="text"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              placeholder="Rechercher par nom, email, rôle…"
+              className="h-9 w-64 rounded-lg border border-gray-300 bg-white px-3 text-sm text-gray-700 placeholder-gray-400 focus:border-brand-500 focus:outline-none dark:border-gray-700 dark:bg-gray-900 dark:text-white dark:placeholder-gray-500"
+            />
+            <button onClick={openCreate} className="flex items-center gap-2 rounded-lg bg-brand-500 px-4 py-2 text-sm font-medium text-white hover:bg-brand-600">
+              <PlusIcon className="size-4" /> Nouvel Utilisateur
+            </button>
+          </div>
         </div>
         <div className="border-t border-gray-100 dark:border-gray-800 overflow-x-auto">
-          {loading ? <p className="p-6 text-center text-gray-500">Chargement...</p> : data.length === 0 ? <p className="p-6 text-center text-gray-500">Aucun utilisateur</p> : (
+          {loading ? <p className="p-6 text-center text-gray-500">Chargement...</p> : filtered.length === 0 ? (
+            <p className="p-6 text-center text-gray-500">
+              {search ? `Aucun résultat pour « ${search} »` : "Aucun utilisateur"}
+            </p>
+          ) : (
             <Table>
               <TableHeader className="border-b border-gray-100 dark:border-white/[0.05]">
                 <TableRow>
@@ -99,7 +126,7 @@ export default function UtilisateursPage() {
                 </TableRow>
               </TableHeader>
               <TableBody className="divide-y divide-gray-100 dark:divide-white/[0.05]">
-                {data.map(u => (
+                {filtered.map(u => (
                   <TableRow key={u.id}>
                     <TableCell className="px-5 py-4 text-gray-500 text-theme-sm">{u.id}</TableCell>
                     <TableCell className="px-5 py-4">

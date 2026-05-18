@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback } from "react";
+import { useLocation } from "react-router";
 import PageBreadcrumb from "../../components/common/PageBreadCrumb";
 import PageMeta from "../../components/common/PageMeta";
 import Badge from "../../components/ui/badge/Badge";
@@ -11,6 +12,7 @@ import {
   CreanceService,
   CreancierService,
   PaiementService,
+  AuthService,
   type Creance,
   type Creancier,
   type Paiement,
@@ -27,9 +29,11 @@ const statutPaiementColor = (s: string): "success" | "warning" | "error" | "info
 };
 
 export default function CreancesPage() {
+  const location = useLocation();
   const [data, setData]         = useState<Creance[]>([]);
   const [creanciers, setCreanciers] = useState<Creancier[]>([]);
   const [loading, setLoading]   = useState(true);
+  const [search, setSearch]     = useState((location.state as any)?.search ?? "");
 
   // ── CRUD modals ─────────────────────────────────────────────────────────────
   const [modalOpen, setModalOpen]   = useState(false);
@@ -113,6 +117,20 @@ export default function CreancesPage() {
   const getCreancierNom = (code: string) =>
     creanciers.find(c => c.codeCreancier === code)?.nomCreancier || code;
 
+  const isAdmin = AuthService.getUser()?.role === "Admin";
+
+  const filtered = search.trim()
+    ? data.filter(c => {
+        const q = search.trim().toLowerCase();
+        return (
+          c.idCreance.toLowerCase().includes(q) ||
+          c.codeCreancier.toLowerCase().includes(q) ||
+          (c.nomCreance || "").toLowerCase().includes(q) ||
+          getCreancierNom(c.codeCreancier).toLowerCase().includes(q)
+        );
+      })
+    : data;
+
   return (
     <>
       <PageMeta title="Créances — BMCE Pay" description="" />
@@ -128,27 +146,40 @@ export default function CreancesPage() {
 
       {/* ── Tableau créances ── */}
       <div className="rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-white/[0.03]">
-        <div className="flex items-center justify-between px-6 py-4">
+        <div className="flex flex-col gap-3 px-6 py-4 sm:flex-row sm:items-center sm:justify-between">
           <h3 className="text-base font-medium text-gray-800 dark:text-white/90">
-            {data.length} créance(s)
+            {filtered.length} / {data.length} créance(s)
           </h3>
-          <button onClick={openCreate}
-            className="flex items-center gap-2 rounded-lg bg-brand-500 px-4 py-2 text-sm font-medium text-white hover:bg-brand-600">
-            <PlusIcon className="size-4" /> Nouvelle Créance
-          </button>
+          <div className="flex flex-1 items-center gap-2 sm:justify-end">
+            <input
+              type="text"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              placeholder="Rechercher par ID, créancier, nom..."
+              className="h-9 w-full max-w-xs rounded-lg border border-gray-300 bg-white px-3 text-sm text-gray-700 placeholder-gray-400 focus:border-brand-500 focus:outline-none dark:border-gray-700 dark:bg-gray-900 dark:text-white dark:placeholder-gray-500"
+            />
+            {isAdmin && (
+              <button onClick={openCreate}
+                className="flex shrink-0 items-center gap-2 rounded-lg bg-brand-500 px-4 py-2 text-sm font-medium text-white hover:bg-brand-600">
+                <PlusIcon className="size-4" /> Nouvelle Créance
+              </button>
+            )}
+          </div>
         </div>
 
         <div className="border-t border-gray-100 dark:border-gray-800">
           {loading ? (
             <p className="p-6 text-center text-gray-500">Chargement...</p>
-          ) : data.length === 0 ? (
-            <p className="p-6 text-center text-gray-500">Aucune créance enregistrée.</p>
+          ) : filtered.length === 0 ? (
+            <p className="p-6 text-center text-gray-500">
+              {search ? `Aucun résultat pour "${search}"` : "Aucune créance enregistrée."}
+            </p>
           ) : (
             <div className="overflow-x-auto">
               <Table>
                 <TableHeader className="border-b border-gray-100 dark:border-white/[0.05]">
                   <TableRow>
-                    {["ID Créance", "Créancier", "Nom Créance", "Paiements liés", "Date Création", "Actions"].map(h => (
+                    {["ID Créance", "Créancier", "Nom Créance", "Paiements liés", "Date Création", ...(isAdmin ? ["Actions"] : [])].map(h => (
                       <TableCell key={h} isHeader
                         className="px-5 py-3 font-medium text-gray-500 text-start text-theme-xs dark:text-gray-400">
                         {h}
@@ -157,7 +188,7 @@ export default function CreancesPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody className="divide-y divide-gray-100 dark:divide-white/[0.05]">
-                  {data.map(c => (
+                  {filtered.map(c => (
                     <TableRow key={c.idCreance}>
                       <TableCell className="px-5 py-4 font-semibold text-brand-500 text-theme-sm">
                         {c.idCreance}
@@ -196,16 +227,18 @@ export default function CreancesPage() {
                       <TableCell className="px-5 py-4 text-gray-500 text-theme-xs">
                         {c.dateCreation ? new Date(c.dateCreation).toLocaleDateString("fr-FR") : "-"}
                       </TableCell>
-                      <TableCell className="px-5 py-4">
-                        <div className="flex items-center gap-2">
-                          <button onClick={() => openEdit(c)} className="text-gray-500 hover:text-brand-500">
-                            <PencilIcon className="size-5" />
-                          </button>
-                          <button onClick={() => openDelete(c)} className="text-gray-500 hover:text-error-500">
-                            <TrashBinIcon className="size-5" />
-                          </button>
-                        </div>
-                      </TableCell>
+                      {isAdmin && (
+                        <TableCell className="px-5 py-4">
+                          <div className="flex items-center gap-2">
+                            <button onClick={() => openEdit(c)} className="text-gray-500 hover:text-brand-500">
+                              <PencilIcon className="size-5" />
+                            </button>
+                            <button onClick={() => openDelete(c)} className="text-gray-500 hover:text-error-500">
+                              <TrashBinIcon className="size-5" />
+                            </button>
+                          </div>
+                        </TableCell>
+                      )}
                     </TableRow>
                   ))}
                 </TableBody>

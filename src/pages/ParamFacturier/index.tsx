@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import PageBreadcrumb from "../../components/common/PageBreadCrumb";
 import PageMeta from "../../components/common/PageMeta";
 import Badge from "../../components/ui/badge/Badge";
@@ -7,7 +7,7 @@ import { Modal } from "../../components/ui/modal";
 import Label from "../../components/form/Label";
 import Input from "../../components/form/input/InputField";
 import { PencilIcon, TrashBinIcon, PlusIcon } from "../../icons";
-import { ParamFacturierService, CreancierService, type ParamFacturier, type Creancier } from "../../services/api";
+import { ParamFacturierService, CreancierService, AuthService, type ParamFacturier, type Creancier } from "../../services/api";
 
 const empty: Partial<ParamFacturier> = {
   codeCreancier: "",
@@ -39,9 +39,20 @@ export default function ParamFacturierPage() {
   const [editing, setEditing] = useState<ParamFacturier | null>(null);
   const [deleting, setDeleting] = useState<ParamFacturier | null>(null);
   const [form, setForm] = useState<Partial<ParamFacturier>>(empty);
+  const [search, setSearch] = useState("");
   const [ribError, setRibError] = useState("");
   const [toast, setToast] = useState("");
   const [toastType, setToastType] = useState<"success" | "error">("success");
+
+  const filtered = useMemo(() => {
+    const q = search.toLowerCase().trim();
+    if (!q) return data;
+    return data.filter(p =>
+      p.codeCreancier.toLowerCase().includes(q) ||
+      p.nomCreancier.toLowerCase().includes(q) ||
+      (p.typeCommission ?? "").toLowerCase().includes(q)
+    );
+  }, [data, search]);
 
   const load = useCallback(() => {
     setLoading(true);
@@ -136,14 +147,16 @@ export default function ParamFacturierPage() {
 
   const set = (k: keyof ParamFacturier, v: any) => setForm({ ...form, [k]: v });
 
+  const isAdmin = AuthService.getUser()?.role === "Admin";
+
   // Creanciers qui n'ont pas encore de parametrage (pour le menu deroulant de creation)
   const existingCodes = new Set(data.map((d) => d.codeCreancier));
   const availableCreanciers = creanciers.filter((c) => !existingCodes.has(c.codeCreancier));
 
   return (
     <>
-      <PageMeta title="Param. Facturier — BMCE Pay" description="" />
-      <PageBreadcrumb pageTitle="Paramétrage Facturier" />
+      <PageMeta title="Param. Créancier — BMCE Pay" description="" />
+      <PageBreadcrumb pageTitle="Paramétrage Créancier" />
       {toast && (
         <div
           className={`mb-4 rounded-lg p-3 text-sm ${
@@ -157,22 +170,35 @@ export default function ParamFacturierPage() {
       )}
 
       <div className="rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-white/[0.03]">
-        <div className="flex items-center justify-between px-6 py-4">
+        <div className="flex flex-wrap items-center justify-between gap-3 px-6 py-4">
           <h3 className="text-base font-medium text-gray-800 dark:text-white/90">
-            {data.length} paramétrage(s)
+            {filtered.length} / {data.length} paramétrage(s)
           </h3>
-          <button
-            onClick={openCreate}
-            className="flex items-center gap-2 rounded-lg bg-brand-500 px-4 py-2 text-sm font-medium text-white hover:bg-brand-600"
-          >
-            <PlusIcon className="size-4" /> Nouveau
-          </button>
+          <div className="flex items-center gap-3">
+            <input
+              type="text"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              placeholder="Rechercher créancier ou type commission…"
+              className="h-9 w-64 rounded-lg border border-gray-300 bg-white px-3 text-sm text-gray-700 placeholder-gray-400 focus:border-brand-500 focus:outline-none dark:border-gray-700 dark:bg-gray-900 dark:text-white dark:placeholder-gray-500"
+            />
+            {isAdmin && (
+              <button
+                onClick={openCreate}
+                className="flex items-center gap-2 rounded-lg bg-brand-500 px-4 py-2 text-sm font-medium text-white hover:bg-brand-600"
+              >
+                <PlusIcon className="size-4" /> Nouveau
+              </button>
+            )}
+          </div>
         </div>
         <div className="border-t border-gray-100 dark:border-gray-800 overflow-x-auto">
           {loading ? (
             <p className="p-6 text-center text-gray-500">Chargement...</p>
-          ) : data.length === 0 ? (
-            <p className="p-6 text-center text-gray-500">Aucun paramétrage</p>
+          ) : filtered.length === 0 ? (
+            <p className="p-6 text-center text-gray-500">
+              {search ? `Aucun résultat pour « ${search} »` : "Aucun paramétrage"}
+            </p>
           ) : (
             <Table>
               <TableHeader className="border-b border-gray-100 dark:border-white/[0.05]">
@@ -186,7 +212,7 @@ export default function ParamFacturierPage() {
                     "Val. Comm.",
                     "Com. Min.",
                     "Sécurité",
-                    "Actions",
+                    ...(isAdmin ? ["Actions"] : []),
                   ].map((h) => (
                     <TableCell
                       key={h}
@@ -199,7 +225,7 @@ export default function ParamFacturierPage() {
                 </TableRow>
               </TableHeader>
               <TableBody className="divide-y divide-gray-100 dark:divide-white/[0.05]">
-                {data.map((p) => (
+                {filtered.map((p) => (
                   <TableRow key={p.codeCreancier}>
                     <TableCell className="px-4 py-3 font-medium text-brand-500 text-theme-sm">
                       {p.codeCreancier}
@@ -236,22 +262,24 @@ export default function ParamFacturierPage() {
                     <TableCell className="px-4 py-3 text-gray-700 text-theme-sm dark:text-gray-300">
                       {p.levelsecurity}
                     </TableCell>
-                    <TableCell className="px-4 py-3">
-                      <div className="flex items-center gap-2">
-                        <button
-                          onClick={() => openEdit(p)}
-                          className="text-gray-500 hover:text-brand-500"
-                        >
-                          <PencilIcon className="size-5" />
-                        </button>
-                        <button
-                          onClick={() => openDelete(p)}
-                          className="text-gray-500 hover:text-error-500"
-                        >
-                          <TrashBinIcon className="size-5" />
-                        </button>
-                      </div>
-                    </TableCell>
+                    {isAdmin && (
+                      <TableCell className="px-4 py-3">
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => openEdit(p)}
+                            className="text-gray-500 hover:text-brand-500"
+                          >
+                            <PencilIcon className="size-5" />
+                          </button>
+                          <button
+                            onClick={() => openDelete(p)}
+                            className="text-gray-500 hover:text-error-500"
+                          >
+                            <TrashBinIcon className="size-5" />
+                          </button>
+                        </div>
+                      </TableCell>
+                    )}
                   </TableRow>
                 ))}
               </TableBody>
@@ -267,7 +295,7 @@ export default function ParamFacturierPage() {
         className="max-w-2xl p-6 lg:p-8 max-h-[90vh] overflow-y-auto"
       >
         <h4 className="mb-6 text-lg font-semibold text-gray-800 dark:text-white">
-          {editing ? "Modifier Paramétrage" : "Nouveau Paramétrage Facturier"}
+          {editing ? "Modifier Paramétrage Créancier" : "Nouveau Paramétrage Créancier"}
         </h4>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <div>
@@ -421,7 +449,7 @@ export default function ParamFacturierPage() {
           Confirmer la suppression
         </h4>
         <p className="mb-6 text-sm text-gray-500">
-          Supprimer le paramétrage facturier de "{deleting?.codeCreancier} — {deleting?.nomCreancier}" ?
+          Supprimer le paramétrage créancier de « {deleting?.codeCreancier} — {deleting?.nomCreancier} » ?
         </p>
         <div className="flex justify-end gap-3">
           <button

@@ -16,6 +16,7 @@ import {
   PlugInIcon,
   TableIcon,
   UserCircleIcon,
+  UserIcon,
 } from "../icons";
 import { useSidebar } from "../context/SidebarContext";
 import SidebarWidget from "./SidebarWidget";
@@ -42,7 +43,7 @@ const navItems: NavItem[] = [
   },
   {
     icon: <PieChartIcon />,
-    name: "Param. Facturier",
+    name: "Param. Créancier",
     path: "/param-facturier",
   },
   {
@@ -69,7 +70,7 @@ const navItems: NavItem[] = [
 
 const adminItems: NavItem[] = [
   {
-    icon: <UserCircleIcon />,
+    icon: <UserIcon />,
     name: "Utilisateurs",
     path: "/utilisateurs",
   },
